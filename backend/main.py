@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 from models import *
 
+# Datos de prueba
+from datosPrueba import carga_datos_prueba
+
 
 # Crea las tablas del models si es que aún no han sido creadas
 Base.metadata.create_all(bind=engine)
@@ -27,15 +30,21 @@ def get_session():
     finally:
         session.close()
 
+# Añade los datos de prueba al dataset
+@app.post("/prueba", status_code=204)
+def datos_prueba(session: Session = Depends(get_session)):
+    if not carga_datos_prueba(session):
+        raise HTTPException(status_code=404)
+
 # Recupera todas las plantas para la vista inicial
-@app.get("/")
+@app.get("/", status_code=200)
 def todas_plantas(session: Session = Depends(get_session)):
     query = select(Planta).order_by(Planta.id_planta.desc())
     plantas = session.scalars(query).all()
     return plantas
 
 # Extrae todas las metricas de una planta para graficarlas
-@app.get("/metricas") # http://127.0.0.1:8000/metricas?id=1
+@app.get("/metricas", status_code=200) # http://127.0.0.1:8000/metricas?id=1
 def metricas(id: int = 0, session: Session = Depends(get_session)):
     query = (
         select(Planta, Metrica)
@@ -53,7 +62,7 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
     return plantas
 
 # Recupera la ultima metrica para mostrarlas en las cards
-@app.get("/ultimaMetrica") # http://127.0.0.1:8000/ultimaMetrica?id=1
+@app.get("/ultimaMetrica", status_code=200) # http://127.0.0.1:8000/ultimaMetrica?id=1
 def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
     query = (
         select(Planta, Metrica)
