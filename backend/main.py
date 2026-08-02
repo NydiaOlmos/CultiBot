@@ -6,11 +6,12 @@ from fastapi import FastAPI, Depends, HTTPException
 
 # Manejo de la base de datos
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, contains_eager
 
 # Importa la sesión y los modelos
 from database import SessionLocal, engine
 from models import *
+from schemas import *
 
 # Datos de prueba
 from datosPrueba import carga_datos_prueba
@@ -31,51 +32,56 @@ def get_session():
         session.close()
 
 # Añade los datos de prueba al dataset
+# http://127.0.0.1:8000/prueba
 @app.post("/prueba", status_code=204)
 def datos_prueba(session: Session = Depends(get_session)):
     if not carga_datos_prueba(session):
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="Ha surgido un problema con la carga de datos")
 
 # Recupera todas las plantas para la vista inicial
-@app.get("/", status_code=200)
+# http://127.0.0.1:8000/
+@app.get("/", status_code=200, response_model=list[PlantaSchema])
 def todas_plantas(session: Session = Depends(get_session)):
     query = select(Planta).order_by(Planta.id_planta.desc())
     plantas = session.scalars(query).all()
+    
+    if not plantas:
+        raise HTTPException(status_code=204, detail="No hay plantas registradas")
+    
     return plantas
 
 # Extrae todas las metricas de una planta para graficarlas
-@app.get("/metricas", status_code=200) # http://127.0.0.1:8000/metricas?id=1
+# http://127.0.0.1:8000/metricas?id=1
+@app.get("/metricas", status_code=200, response_model=PlantaConMetricasResponse) 
 def metricas(id: int = 0, session: Session = Depends(get_session)):
     query = (
         select(Planta, Metrica)
-        .join(Metrica, Planta.c.id_planta == Metrica.c.id_planta)
-        .where(Planta.c.id_planta == id)
-        .order_by(Metrica.c.fecha.desc())
-    )
-    plantas = session.scalars(query).all()
-    
-    if not plantas:
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
-    
-    # metricas_list = [Metrica.from_joined_row(p) for p in plantas]
-    # return {"metricas": metricas_list}
-    return plantas
-
-# Recupera la ultima metrica para mostrarlas en las cards
-@app.get("/ultimaMetrica", status_code=200) # http://127.0.0.1:8000/ultimaMetrica?id=1
-def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
-    query = (
-        select(Planta, Metrica)
-        .join(Metrica, Planta.c.id_planta == Metrica.c.id_planta)
-        .where(Planta.c.id_planta == id)
-        .order_by(Metrica.c.fecha.desc())
-        .limit(1)
-    )
+        .where(Planta.id_planta == id)
+        .options(selectinload(Planta.metricas))
+    ) # El selectinload es lo que realiza la carga de la lista de métricas
     planta = session.scalar(query)
     
     if not planta:
         raise HTTPException(status_code=404, detail="Planta no encontrada")
     
-    # metrica_dto = Metrica.from_joined_row(planta)
-    # return {"metrica": metrica_dto}
+    return planta
+
+# Recupera la ultima métrica para mostrarlas en las cards
+# http://127.0.0.1:8000/ultimaMetrica?id=1
+@app.get("/ultimaMetrica", status_code=200, response_model=PlantaConMetricasResponse)
+def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .order_by(Metrica.fecha.desc())
+        .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta = session.scalar(query)
+    
+    if not planta:
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    
     return planta

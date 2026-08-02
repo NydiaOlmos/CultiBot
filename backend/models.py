@@ -26,12 +26,12 @@ class Planta(Base):
     metricas: Mapped[List["Metrica"]] = relationship(back_populates="planta", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"""Planta(
-        id={self.id_planta!r}, 
-        nombre={self.nombre!r}, 
-        tipo={self.tipo!r}, 
-        tipo_suelo={self.tipo_suelo!r}
-        )"""
+        return f"""Planta: {"{"}
+        id_planta: {self.id_planta!r}, 
+        nombre: {self.nombre!r}, 
+        tipo: {self.tipo!r}, 
+        tipo_suelo: {self.tipo_suelo!r}
+        {"}"}"""
 
 class Metrica(Base):
     __tablename__ = "metricas"
@@ -49,14 +49,14 @@ class Metrica(Base):
     planta: Mapped["Planta"] = relationship(back_populates="metricas")
 
     def __repr__(self):
-        return f"""Metrica(
-        id_metrica={self.id_metrica!r},
-        id_planta={self.id_planta!r},
-        humedad_suelo={self.humedad_suelo!r},
-        temperatura_ambiente={self.temperatura_ambiente!r},
-        luminosidad={self.luminosidad!r},
-        nitrogeno={self.nitrogeno!r},
-        potasio={self.potasio!r},
-        fosforo={self.fosforo!r},
-        fecha={self.fecha!r}
-        )"""
+        return f"""Metrica: {"{"}
+        id_metrica: {self.id_metrica!r},
+        id_planta: {self.id_planta!r},
+        humedad_suelo: {self.humedad_suelo!r},
+        temperatura_ambiente: {self.temperatura_ambiente!r},
+        luminosidad: {self.luminosidad!r},
+        nitrogeno: {self.nitrogeno!r},
+        potasio: {self.potasio!r},
+        fosforo: {self.fosforo!r},
+        fecha: {self.fecha!r}
+        {"}"}"""
