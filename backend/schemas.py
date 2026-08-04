@@ -3,6 +3,11 @@ from datetime import datetime
 from typing import List, Optional
 from models import Suelo
 
+class PlantaValid(BaseModel):
+    nombre: str
+    tipo: str
+    tipo_suelo: Suelo
+
 class PlantaSchema(BaseModel):
     id_planta: int
     nombre: str

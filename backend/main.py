@@ -44,7 +44,7 @@ def datos_prueba(session: Session = Depends(get_session)):
 def todas_plantas(session: Session = Depends(get_session)):
     query = select(Planta).order_by(Planta.id_planta.desc())
     plantas = session.scalars(query).all()
-    
+
     if not plantas:
         raise HTTPException(status_code=204, detail="No hay plantas registradas")
     
@@ -85,3 +85,20 @@ def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Planta no encontrada")
     
     return planta
+
+# Agrega una nueva planta
+# http://127.0.0.1:8000/
+@app.post("/", status_code=201)
+def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_session)):
+    # Convertir el esquema de Pydantic a SQLAlchemy
+    nueva_planta = Planta(
+        nombre = planta_data.nombre,
+        tipo = planta_data.tipo,
+        tipo_suelo = planta_data.tipo_suelo
+    )
+
+    session.add(nueva_planta)
+    session.commit()
+    session.refresh(nueva_planta)
+
+    return nueva_planta
