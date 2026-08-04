@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException
 # Manejo de la base de datos
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, contains_eager
+from datetime import datetime
 
 # Importa la sesión y los modelos
 from database import SessionLocal, engine
@@ -88,7 +89,7 @@ def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
 
 # Agrega una nueva planta
 # http://127.0.0.1:8000/
-@app.post("/", status_code=201)
+@app.post("/", status_code=201, response_model=PlantaSchema)
 def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_session)):
     # Convertir el esquema de Pydantic a SQLAlchemy
     nueva_planta = Planta(
@@ -97,8 +98,44 @@ def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_sessio
         tipo_suelo = planta_data.tipo_suelo
     )
 
+    # Añade la planta a la db
     session.add(nueva_planta)
     session.commit()
-    session.refresh(nueva_planta)
+    session.refresh(nueva_planta) # Actualiza la planta para obtener el id
 
     return nueva_planta
+
+# Agregar una nueva métrica
+# http://127.0.0.1:8000/metricas?id=1
+@app.post("/metricas", status_code=201, response_model=PlantaConMetricasResponse)
+def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Depends(get_session)):
+    # Verificamos que exista la planta
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta = session.scalar(query)
+
+    if not planta:
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    
+    # Añade la nueva métrica
+    nueva_metrica = Metrica(
+        id_planta = id,
+        humedad_suelo = metrica_data.humedad_suelo,
+        temperatura_ambiente = metrica_data.temperatura_ambiente,
+        luminosidad = metrica_data.luminosidad,
+        nitrogeno = metrica_data.nitrogeno,
+        potasio = metrica_data.potasio,
+        fosforo = metrica_data.fosforo,
+        fecha = datetime.now()
+    )
+
+    session.add(nueva_metrica)
+    session.commit()
+    session.refresh(planta) # Refresca la planta con la nueva métrica
+
+    return planta

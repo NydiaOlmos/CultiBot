@@ -8,6 +8,14 @@ class PlantaValid(BaseModel):
     tipo: str
     tipo_suelo: Suelo
 
+class MetricaValid(BaseModel):
+    humedad_suelo: Optional[float]
+    temperatura_ambiente: Optional[float]
+    luminosidad: Optional[float]
+    nitrogeno: Optional[float]
+    potasio: Optional[float]
+    fosforo: Optional[float]
+
 class PlantaSchema(BaseModel):
     id_planta: int
     nombre: str
