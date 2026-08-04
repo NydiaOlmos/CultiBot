@@ -139,3 +139,16 @@ def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Dep
     session.refresh(planta) # Refresca la planta con la nueva métrica
 
     return planta
+
+# Elimina una planta
+# http://127.0.0.1:8000/?id=1
+@app.delete("/", status_code=204)
+def elimina_planta(id: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta existe
+    planta = session.get(Planta, id)
+
+    if not planta:
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    
+    session.delete(planta)
+    session.commit()
