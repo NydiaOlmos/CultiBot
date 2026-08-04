@@ -68,7 +68,7 @@ def datos_prueba(session: Session = Depends(get_session)):
 # Agrega una nueva planta
 # http://127.0.0.1:8000/
 @app.post("/", status_code=201, response_model=PlantaSchema)
-def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_session)):
+def crear_planta(planta_data: PlantaCreable, session: Session = Depends(get_session)):
     # Convertir el esquema de Pydantic a SQLAlchemy
     nueva_planta = Planta(
         nombre = planta_data.nombre,
@@ -86,7 +86,7 @@ def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_sessio
 # Agregar una nueva métrica
 # http://127.0.0.1:8000/metricas?id=1
 @app.post("/metricas", status_code=201, response_model=PlantaConMetricasResponse)
-def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Depends(get_session)):
+def crear_metrica(metrica_data: MetricaCreable, id:int = 0, session: Session = Depends(get_session)):
     # Verificamos que exista la planta
     planta = valida_existencia_planta(session, id)
     
@@ -172,7 +172,7 @@ def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
     planta = session.scalar(query)
     
     if not planta:
-        raise HTTPException(status_code=204, detail="Planta no tiene métricas")
+        raise HTTPException(status_code=204, detail="La planta no tiene métricas")
     
     return planta
 
@@ -194,6 +194,36 @@ def actualiza_planta(planta_data: PlantaActualizable, id: int = 0, session: Sess
     # Guarda los datos actualizados en la db
     session.commit()
     session.refresh(planta)
+
+    return planta
+
+# Actualiza una métrica
+# http://127.0.0.1:8000/metricas?id=1&id_metrica=1
+@app.put("/metricas", status_code=200, response_model=PlantaConMetricasResponse)
+def actualiza_metrica(metrica_data: MetricaActualizable,id: int = 0, id_metrica: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta y la métrica existan
+    metrica = valida_existencia_metrica_planta(session, id, id_metrica)
+    
+    # Convertimos el equema en diccionario
+    datos_dict = metrica_data.model_dump(exclude_unset=True) # Permitimos los null y none
+
+    # Asigna dinámicamente los valores actualizados al objeto metrica
+    for clave, valor in datos_dict.items():
+        setattr(metrica, clave, valor)
+
+    # Guarda los datos actualizados en la db
+    session.commit()
+    session.refresh(metrica)
+
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id and Metrica.id_metrica == id_metrica)
+        .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta = session.scalar(query)
 
     return planta
 

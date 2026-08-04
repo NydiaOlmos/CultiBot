@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 from models import Suelo
 
-class PlantaValid(BaseModel):
+class PlantaCreable(BaseModel):
     nombre: str
     tipo: str
     tipo_suelo: Suelo
@@ -28,14 +28,6 @@ class PlantaActualizable(BaseModel):
 
         return valor
 
-class MetricaValid(BaseModel):
-    humedad_suelo: Optional[float]
-    temperatura_ambiente: Optional[float]
-    luminosidad: Optional[float]
-    nitrogeno: Optional[float]
-    potasio: Optional[float]
-    fosforo: Optional[float]
-
 class PlantaSchema(BaseModel):
     id_planta: int
     nombre: str
@@ -43,6 +35,22 @@ class PlantaSchema(BaseModel):
     tipo_suelo: Suelo
 
     model_config = ConfigDict(from_attributes=True)
+
+class MetricaCreable(BaseModel):
+    humedad_suelo: Optional[float]
+    temperatura_ambiente: Optional[float]
+    luminosidad: Optional[float]
+    nitrogeno: Optional[float]
+    potasio: Optional[float]
+    fosforo: Optional[float]
+
+class MetricaActualizable(BaseModel):
+    humedad_suelo: Optional[float] = None
+    temperatura_ambiente: Optional[float] = None
+    luminosidad: Optional[float] = None
+    nitrogeno: Optional[float] = None
+    potasio: Optional[float] = None
+    fosforo: Optional[float] = None
 
 class MetricaSchema(BaseModel):
     id_metrica: int
