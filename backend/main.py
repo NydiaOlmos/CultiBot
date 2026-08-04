@@ -76,6 +76,10 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
 # http://127.0.0.1:8000/ultimaMetrica?id=1
 @app.get("/ultimaMetrica", status_code=200, response_model=PlantaConMetricasResponse)
 def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
+    # Verifica que la planta exista
+    if not session.get(Planta, id):
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    
     query = (
         select(Planta)
         .join(Planta.metricas)
@@ -88,7 +92,7 @@ def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
     planta = session.scalar(query)
     
     if not planta:
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
+        raise HTTPException(status_code=204, detail="Planta no tiene métricas")
     
     return planta
 
