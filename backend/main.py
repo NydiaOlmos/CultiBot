@@ -32,6 +32,31 @@ def get_session():
     finally:
         session.close()
 
+# Funciones de validación
+def valida_existencia_planta(session: Session, id: int = 0):
+    planta = session.get(Planta, id)
+
+    # Verificamos que exista la planta
+    if not planta:
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+
+    return planta
+
+def valida_existencia_metrica_planta(session: Session, id: int = 0, id_metrica: int = 0):
+    # Válida la planta
+    valida_existencia_planta(session, id)
+    
+    # Verifica que exista la métrica
+    metrica = session.get(Metrica, id_metrica)
+    if not metrica:
+        raise HTTPException(status_code=404, detail="Métrica no encontrada")
+
+    # Verifica que exista la métrica en la planta
+    if id != metrica.id_planta:
+        raise HTTPException(status_code=400, detail="La planta no tiene esa métrica")
+    
+    return metrica
+
 # ********************* CREATE ****************************
 # Añade los datos de prueba al dataset
 # http://127.0.0.1:8000/prueba
@@ -63,10 +88,7 @@ def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_sessio
 @app.post("/metricas", status_code=201, response_model=PlantaConMetricasResponse)
 def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Depends(get_session)):
     # Verificamos que exista la planta
-    planta = session.get(Planta, id)
-
-    if not planta:
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    planta = valida_existencia_planta(session, id)
     
     # Añade la nueva métrica
     nueva_metrica = Metrica(
@@ -116,8 +138,7 @@ def todas_plantas(session: Session = Depends(get_session)):
 @app.get("/metricas", status_code=200, response_model=PlantaConMetricasResponse) 
 def metricas(id: int = 0, session: Session = Depends(get_session)):
     # Verifica que la planta exista
-    if not session.get(Planta, id):
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    valida_existencia_planta(session, id)
     
     query = (
         select(Planta)
@@ -137,8 +158,7 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
 @app.get("/ultimaMetrica", status_code=200, response_model=PlantaConMetricasResponse)
 def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
     # Verifica que la planta exista
-    if not session.get(Planta, id):
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    valida_existencia_planta(session, id)
     
     query = (
         select(Planta)
@@ -156,38 +176,44 @@ def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
     
     return planta
 
+# ********************* UPDATE ****************************
+# Actualiza una planta
+# http://127.0.0.1:8000/?id=1
+@app.put("/", status_code=200, response_model=PlantaSchema)
+def actualiza_planta(planta_data: PlantaActualizable, id: int = 0, session: Session = Depends(get_session)):
+    # Válida que la planta exista
+    planta = valida_existencia_planta(session, id)
+
+    # Convierte el esquema en diccionario únicamente con los campos rellenados
+    datos_dict = planta_data.model_dump(exclude_unset=True, exclude_none=True)
+
+    # Asigna dinámicamente los valores actualizados al objeto planta
+    for clave, valor in datos_dict.items():
+        setattr(planta, clave, valor)
+
+    # Guarda los datos actualizados en la db
+    session.commit()
+    session.refresh(planta)
+
+    return planta
+
 # ********************* DELETE ****************************
 # Elimina una planta
 # http://127.0.0.1:8000/?id=1
 @app.delete("/", status_code=204)
 def elimina_planta(id: int = 0, session: Session = Depends(get_session)):
     # Verificamos que la planta existe
-    planta = session.get(Planta, id)
-
-    if not planta:
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    planta = valida_existencia_planta(session, id)
     
     session.delete(planta)
     session.commit()
 
 # Elimina una métrica
-# http://127.0.0.1:8000/metricas?id=1
+# http://127.0.0.1:8000/metricas?id=1&id_metrica=1
 @app.delete("/metricas", status_code=204)
 def elimina_metrica(id: int = 0, id_metrica: int = 0, session: Session = Depends(get_session)):
     # Verificamos que la planta exista
-    if not session.get(Planta, id):
-        raise HTTPException(status_code=404, detail="Planta no encontrada")
-    
-    # Selecciona la métrica
-    metrica = session.get(Metrica, id_metrica)
-    
-    # Verificamos que exista la métrica
-    if not metrica:
-        raise HTTPException(status_code=404, detail="Métrica no encontrada")
-
-    # Verificamos que exista la métrica
-    if id != metrica.id_planta:
-        raise HTTPException(status_code=400, detail="La planta no tiene esa métrica")
+    metrica = valida_existencia_metrica_planta(session, id, id_metrica)
     
     # Elimina la métrica
     session.delete(metrica)
