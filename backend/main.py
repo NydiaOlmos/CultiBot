@@ -57,6 +57,7 @@ def todas_plantas(session: Session = Depends(get_session)):
 def metricas(id: int = 0, session: Session = Depends(get_session)):
     query = (
         select(Planta, Metrica)
+        .join(Planta.metricas)
         .where(Planta.id_planta == id)
         .options(selectinload(Planta.metricas))
     ) # El selectinload es lo que realiza la carga de la lista de métricas
@@ -110,14 +111,7 @@ def crear_planta(planta_data: PlantaValid, session: Session = Depends(get_sessio
 @app.post("/metricas", status_code=201, response_model=PlantaConMetricasResponse)
 def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Depends(get_session)):
     # Verificamos que exista la planta
-    query = (
-        select(Planta)
-        .join(Planta.metricas)
-        .where(Planta.id_planta == id)
-        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
-    )
-
-    planta = session.scalar(query)
+    planta = session.get(Planta, id)
 
     if not planta:
         raise HTTPException(status_code=404, detail="Planta no encontrada")
@@ -138,7 +132,19 @@ def crear_metrica(metrica_data: MetricaValid, id:int = 0, session: Session = Dep
     session.commit()
     session.refresh(planta) # Refresca la planta con la nueva métrica
 
-    return planta
+    # Retornamos la planta con la métrica recien agregada
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .order_by(Metrica.fecha.desc())
+        .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta_con_metrica = session.scalar(query)
+
+    return planta_con_metrica
 
 # Elimina una planta
 # http://127.0.0.1:8000/?id=1
