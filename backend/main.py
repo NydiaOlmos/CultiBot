@@ -51,7 +51,7 @@ def todas_plantas(session: Session = Depends(get_session)):
     
     return plantas
 
-# Extrae todas las metricas de una planta para graficarlas
+# Extrae todas las métricas de una planta para graficarlas
 # http://127.0.0.1:8000/metricas?id=1
 @app.get("/metricas", status_code=200, response_model=PlantaConMetricasResponse) 
 def metricas(id: int = 0, session: Session = Depends(get_session)):
@@ -60,7 +60,7 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Planta no encontrada")
     
     query = (
-        select(Planta, Metrica)
+        select(Planta)
         .join(Planta.metricas)
         .where(Planta.id_planta == id)
         .options(selectinload(Planta.metricas))
@@ -72,7 +72,7 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
     
     return planta
 
-# Recupera la ultima métrica para mostrarlas en las cards
+# Recupera la última métrica para mostrarlas en las cards
 # http://127.0.0.1:8000/ultimaMetrica?id=1
 @app.get("/ultimaMetrica", status_code=200, response_model=PlantaConMetricasResponse)
 def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
@@ -165,4 +165,27 @@ def elimina_planta(id: int = 0, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Planta no encontrada")
     
     session.delete(planta)
+    session.commit()
+
+# Elimina una métrica
+# http://127.0.0.1:8000/metricas?id=1
+@app.delete("/metricas", status_code=204)
+def elimina_metrica(id: int = 0, id_metrica: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta exista
+    if not session.get(Planta, id):
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
+    
+    # Selecciona la métrica
+    metrica = session.get(Metrica, id_metrica)
+    
+    # Verificamos que exista la métrica
+    if not metrica:
+        raise HTTPException(status_code=404, detail="Métrica no encontrada")
+
+    # Verificamos que exista la métrica
+    if id != metrica.id_planta:
+        raise HTTPException(status_code=400, detail="La planta no tiene esa métrica")
+    
+    # Elimina la métrica
+    session.delete(metrica)
     session.commit()
