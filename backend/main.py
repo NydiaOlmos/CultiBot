@@ -133,6 +133,14 @@ def todas_plantas(session: Session = Depends(get_session)):
     
     return plantas
 
+# Recupera una planta
+# http://127.0.0.1:8000/planta?id=1
+@app.get("/planta", status_code=200, response_model=PlantaSchema)
+def una_planta(id: int = 0, session: Session = Depends(get_session)):
+    planta = valida_existencia_planta(session, id)
+
+    return planta
+
 # Extrae todas las métricas de una planta para graficarlas
 # http://127.0.0.1:8000/metricas?id=1
 @app.get("/metricas", status_code=200, response_model=PlantaConMetricasResponse) 
@@ -152,6 +160,17 @@ def metricas(id: int = 0, session: Session = Depends(get_session)):
         raise HTTPException(status_code=204, detail="La planta no tiene métricas")
     
     return planta
+
+# Extrae una métrica especÍfica
+# http://127.0.0.1:8000/metrica?id_metrica=1
+@app.get("/metrica", status_code=200, response_model=MetricaSchema)
+def una_metrica(id_metrica: int = 0, session: Session = Depends(get_session)):
+    metrica = session.get(Metrica, id_metrica)
+
+    if not metrica:
+        raise HTTPException(status_code=404, detail="No existe la métrica")
+
+    return metrica
 
 # Recupera la última métrica para mostrarlas en las cards
 # http://127.0.0.1:8000/ultimaMetrica?id=1
