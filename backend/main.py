@@ -1,131 +1,269 @@
-from dataclasses import dataclass
+# Para correr el back
+# fastapi dev
+
+# Manejo de las peticiones a la api
+from fastapi import FastAPI, Depends, HTTPException
+
+# Manejo de la base de datos
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload, contains_eager
 from datetime import datetime
-from fastapi import FastAPI
-from enum import Enum
-from typing import Mapping, Any
 
-# Conexion con la db
-import sqlalchemy as db
-import os
+# Importa la sesión y los modelos
+from database import SessionLocal, engine
+from models import *
+from schemas import *
+
+# Datos de prueba
+from datosPrueba import carga_datos_prueba
 
 
-# Variables de entorno para evitar el hardcode
-host = os.environ['DB_HOST']
-pwd = os.environ['DB_PASSWORD']
-usuario  = os.environ['DB_USER']
+# Crea las tablas del models si es que aún no han sido creadas
+Base.metadata.create_all(bind=engine)
 
-# Conexion con la db
-engine = db.create_engine(f"postgresql://{usuario}:{pwd}@{host}:5433/cultibotdb")
-
-# Inicializacion del metadata object
-meta = db.MetaData()
-meta.reflect(bind=engine)
-
-# Tablas
-PLANTAS = meta.tables['plantas']
-METRICAS = meta.tables['metricas']
-
+# ------- Manejo de las peticiones -------
 app = FastAPI()
 
-class Suelo(Enum):
-    ARENOSO = "arenoso"
-    CALIZO = "calizo"
-    TIERRA_NEGRA = "tierra negra"
-    ARCILLOSO = "arcilloso"
-    OTRO = "otro"
+# Generador de dependencia para abrir/cerrar la sesión en cada request
+def get_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
-@dataclass(frozen=True)
-class Planta:
-    id: int
-    nombre: str
-    tipo: str
-    tipo_suelo: Suelo
+# Funciones de validación
+def valida_existencia_planta(session: Session, id: int = 0):
+    planta = session.get(Planta, id)
 
-    @classmethod
-    def from_row(cls, row: Mapping[str, Any]) -> "Planta":
-        """Construye una Planta a partir de una fila de la BD"""
-        return cls(
-            id=row["id_planta"],
-            nombre=row["nombre"],
-            tipo=row["tipo"],
-            tipo_suelo=Suelo(row["tipo_suelo"])
-        )
+    # Verificamos que exista la planta
+    if not planta:
+        raise HTTPException(status_code=404, detail="Planta no encontrada")
 
-@dataclass(frozen=True)
-class Nutriente:
-    nitrogeno: float
-    potasio: float
-    fosforo: float
+    return planta
 
-@dataclass(frozen=True)
-class Metrica:
-    id: int
-    planta: Planta
-    humedad_suelo: float
-    temperatura_ambiente: float
-    luminosidad: float
-    nutrientes: Nutriente
-    fecha: datetime
+def valida_existencia_metrica_planta(session: Session, id: int = 0, id_metrica: int = 0):
+    # Válida la planta
+    valida_existencia_planta(session, id)
+    
+    # Verifica que exista la métrica
+    metrica = session.get(Metrica, id_metrica)
+    if not metrica:
+        raise HTTPException(status_code=404, detail="Métrica no encontrada")
 
-    @classmethod
-    def from_joined_row(cls, row: Mapping[str, Any]) -> "Metrica":
-        """Construye una Metrica y su Planta anidada a partir del JOIN"""
-        return cls(
-            id=row["id_metrica"],  # Asegúrate de que así se llame en tu BD
-            humedad_suelo=float(row["humedad_suelo"]),
-            temperatura_ambiente=float(row["temperatura_ambiente"]),
-            luminosidad=float(row["luminosidad"]),
-            fecha=row["fecha"],
-            # Construimos el DTO Planta interno
-            planta=Planta.from_row(row),
-            # Construimos el DTO Nutriente interno
-            nutrientes=Nutriente(
-                nitrogeno=float(row["nitrogeno"]),
-                potasio=float(row["potasio"]),
-                fosforo=float(row["fosforo"])
-            )
-        )
+    # Verifica que exista la métrica en la planta
+    if id != metrica.id_planta:
+        raise HTTPException(status_code=400, detail="La planta no tiene esa métrica")
+    
+    return metrica
 
-@app.get("/")
-def todas_plantas():
-    query = db.select(PLANTAS).order_by(PLANTAS.c.id_planta.desc())
-    with engine.connect() as conn:
-        plantas = conn.execute(query).mappings().fetchall()
-    plantas_list = [Planta.from_row(p) for p in plantas]
-    return {"plantas":plantas_list}
+# ********************* CREATE ****************************
+# Añade los datos de prueba al dataset
+# http://127.0.0.1:8000/prueba
+@app.post("/prueba", status_code=204)
+def datos_prueba(session: Session = Depends(get_session)):
+    if not carga_datos_prueba(session):
+        raise HTTPException(status_code=404, detail="Ha surgido un problema con la carga de datos")
 
-
-@app.get("/metricas") # http://127.0.0.1:8000/metricas?id=1
-def metricas(id: int = 0):
-    query = (
-        db.select(PLANTAS, METRICAS)
-        .join(METRICAS, PLANTAS.c.id_planta == METRICAS.c.id_planta)
-        .where(PLANTAS.c.id_planta == id)
-        .order_by(METRICAS.c.fecha.desc())
+# Agrega una nueva planta
+# http://127.0.0.1:8000/
+@app.post("/", status_code=201, response_model=PlantaSchema)
+def crear_planta(planta_data: PlantaCreable, session: Session = Depends(get_session)):
+    # Convertir el esquema de Pydantic a SQLAlchemy
+    nueva_planta = Planta(
+        nombre = planta_data.nombre,
+        tipo = planta_data.tipo,
+        tipo_suelo = planta_data.tipo_suelo
     )
-    with engine.connect() as conn:
-        plantas = conn.execute(query).mappings().fetchall()
-    
-    if not plantas:
-        return {"error": "Planta no encontrada"}, 404
-    
-    metricas_list = [Metrica.from_joined_row(p) for p in plantas]
-    return {"metricas": metricas_list}
 
-@app.get("/ultimaMetrica") # http://127.0.0.1:8000/ultimaMetrica?id=1
-def ultima_metrica(id: int = 0):
+    # Añade la planta a la db
+    session.add(nueva_planta)
+    session.commit()
+    session.refresh(nueva_planta) # Actualiza la planta para obtener el id
+
+    return nueva_planta
+
+# Agregar una nueva métrica
+# http://127.0.0.1:8000/metricas?id=1
+@app.post("/metricas", status_code=201, response_model=PlantaConMetricasResponse)
+def crear_metrica(metrica_data: MetricaCreable, id:int = 0, session: Session = Depends(get_session)):
+    # Verificamos que exista la planta
+    planta = valida_existencia_planta(session, id)
+    
+    # Añade la nueva métrica
+    nueva_metrica = Metrica(
+        id_planta = id,
+        humedad_suelo = metrica_data.humedad_suelo,
+        temperatura_ambiente = metrica_data.temperatura_ambiente,
+        luminosidad = metrica_data.luminosidad,
+        nitrogeno = metrica_data.nitrogeno,
+        potasio = metrica_data.potasio,
+        fosforo = metrica_data.fosforo,
+        fecha = datetime.now()
+    )
+
+    session.add(nueva_metrica)
+    session.commit()
+    session.refresh(planta) # Refresca la planta con la nueva métrica
+
+    # Retornamos la planta con la métrica recien agregada
     query = (
-        db.select(PLANTAS, METRICAS)
-        .join(METRICAS, PLANTAS.c.id_planta == METRICAS.c.id_planta)
-        .where(PLANTAS.c.id_planta == id)
-        .order_by(METRICAS.c.fecha.desc())
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .order_by(Metrica.fecha.desc())
         .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
     )
-    with engine.connect() as conn:
-        planta = conn.execute(query).mappings().first()
+
+    planta_con_metrica = session.scalar(query)
+
+    return planta_con_metrica
+
+# ********************* READ ****************************
+# Recupera todas las plantas para la vista inicial
+# http://127.0.0.1:8000/
+@app.get("/", status_code=200, response_model=list[PlantaSchema])
+def todas_plantas(session: Session = Depends(get_session)):
+    query = select(Planta).order_by(Planta.id_planta.desc())
+    plantas = session.scalars(query).all()
+
+    if not plantas:
+        raise HTTPException(status_code=204, detail="No hay plantas registradas")
+    
+    return plantas
+
+# Recupera una planta
+# http://127.0.0.1:8000/planta?id=1
+@app.get("/planta", status_code=200, response_model=PlantaSchema)
+def una_planta(id: int = 0, session: Session = Depends(get_session)):
+    planta = valida_existencia_planta(session, id)
+
+    return planta
+
+# Extrae todas las métricas de una planta para graficarlas
+# http://127.0.0.1:8000/metricas?id=1
+@app.get("/metricas", status_code=200, response_model=PlantaConMetricasResponse) 
+def metricas(id: int = 0, session: Session = Depends(get_session)):
+    # Verifica que la planta exista
+    valida_existencia_planta(session, id)
+    
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .options(selectinload(Planta.metricas))
+    ) # El selectinload es lo que realiza la carga de la lista de métricas
+    planta = session.scalar(query)
     
     if not planta:
-        return {"error": "Planta no encontrada"}, 404
+        raise HTTPException(status_code=204, detail="La planta no tiene métricas")
     
-    metrica_dto = Metrica.from_joined_row(planta)
-    return {"metrica": metrica_dto}
+    return planta
+
+# Extrae una métrica especÍfica
+# http://127.0.0.1:8000/metrica?id_metrica=1
+@app.get("/metrica", status_code=200, response_model=MetricaSchema)
+def una_metrica(id_metrica: int = 0, session: Session = Depends(get_session)):
+    metrica = session.get(Metrica, id_metrica)
+
+    if not metrica:
+        raise HTTPException(status_code=404, detail="No existe la métrica")
+
+    return metrica
+
+# Recupera la última métrica para mostrarlas en las cards
+# http://127.0.0.1:8000/ultimaMetrica?id=1
+@app.get("/ultimaMetrica", status_code=200, response_model=PlantaConMetricasResponse)
+def ultima_metrica(id: int = 0, session: Session = Depends(get_session)):
+    # Verifica que la planta exista
+    valida_existencia_planta(session, id)
+    
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id)
+        .order_by(Metrica.fecha.desc())
+        .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta = session.scalar(query)
+    
+    if not planta:
+        raise HTTPException(status_code=204, detail="La planta no tiene métricas")
+    
+    return planta
+
+# ********************* UPDATE ****************************
+# Actualiza una planta
+# http://127.0.0.1:8000/?id=1
+@app.put("/", status_code=200, response_model=PlantaSchema)
+def actualiza_planta(planta_data: PlantaActualizable, id: int = 0, session: Session = Depends(get_session)):
+    # Válida que la planta exista
+    planta = valida_existencia_planta(session, id)
+
+    # Convierte el esquema en diccionario únicamente con los campos rellenados
+    datos_dict = planta_data.model_dump(exclude_unset=True, exclude_none=True)
+
+    # Asigna dinámicamente los valores actualizados al objeto planta
+    for clave, valor in datos_dict.items():
+        setattr(planta, clave, valor)
+
+    # Guarda los datos actualizados en la db
+    session.commit()
+    session.refresh(planta)
+
+    return planta
+
+# Actualiza una métrica
+# http://127.0.0.1:8000/metricas?id=1&id_metrica=1
+@app.put("/metricas", status_code=200, response_model=PlantaConMetricasResponse)
+def actualiza_metrica(metrica_data: MetricaActualizable,id: int = 0, id_metrica: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta y la métrica existan
+    metrica = valida_existencia_metrica_planta(session, id, id_metrica)
+    
+    # Convertimos el equema en diccionario
+    datos_dict = metrica_data.model_dump(exclude_unset=True) # Permitimos los null y none
+
+    # Asigna dinámicamente los valores actualizados al objeto metrica
+    for clave, valor in datos_dict.items():
+        setattr(metrica, clave, valor)
+
+    # Guarda los datos actualizados en la db
+    session.commit()
+    session.refresh(metrica)
+
+    query = (
+        select(Planta)
+        .join(Planta.metricas)
+        .where(Planta.id_planta == id and Metrica.id_metrica == id_metrica)
+        .limit(1)
+        .options(contains_eager(Planta.metricas)) # Utiliza los registros ya filtados para poblar la lista de métricas
+    )
+
+    planta = session.scalar(query)
+
+    return planta
+
+# ********************* DELETE ****************************
+# Elimina una planta
+# http://127.0.0.1:8000/?id=1
+@app.delete("/", status_code=204)
+def elimina_planta(id: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta existe
+    planta = valida_existencia_planta(session, id)
+    
+    session.delete(planta)
+    session.commit()
+
+# Elimina una métrica
+# http://127.0.0.1:8000/metricas?id=1&id_metrica=1
+@app.delete("/metricas", status_code=204)
+def elimina_metrica(id: int = 0, id_metrica: int = 0, session: Session = Depends(get_session)):
+    # Verificamos que la planta exista
+    metrica = valida_existencia_metrica_planta(session, id, id_metrica)
+    
+    # Elimina la métrica
+    session.delete(metrica)
+    session.commit()

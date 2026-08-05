@@ -70,7 +70,3 @@ INSERT INTO metricas (id_planta, humedad_suelo, temperatura_ambiente, luminosida
 (3, 45.0, 21.8, 4800.0, 0.9, 1.6, 0.6, '2026-05-21 06:00:00'), -- Riego ligero semanal
 (3, 41.3, 30.5, 50500.0, 0.8, 1.5, 0.5, '2026-05-21 12:00:00'),
 (3, 38.7, 25.9, 14200.0, 0.8, 1.5, 0.5, '2026-05-21 18:00:00');
-
-UPDATE plantas SET tipo_suelo = 'otro' WHERE tipo_suelo = 'Otro';
-UPDATE plantas SET tipo_suelo = 'tierra negra' WHERE tipo_suelo = 'Tierra negra';
-UPDATE plantas SET tipo_suelo = 'arenoso' WHERE tipo_suelo = 'Arenoso';
